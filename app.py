@@ -69,17 +69,22 @@ def main():
     st.title("Text to Speech and Speech to Speech with ElevenLabs")
 
     st.write("## Enter Voice Description and Text")
-    voice_description = st.text_input("Voice Description", "Default Voice (Adam)")
+    voices = get_voices()
+    voice_options = {voice['name']: voice['voice_id'] for voice in voices}
+    voice_name = st.selectbox("Select a voice", options=list(voice_options.keys()))
+    selected_voice_id = voice_options[voice_name]
+    
     text_input = st.text_area("Text to Convert to Speech", "Hello, this is a test.")
 
     if st.button("Generate Audio"):
         with st.spinner("Generating audio..."):
-            audio_stream = text_to_speech(text_input)
+            audio_stream = text_to_speech(text_input, voice_id=selected_voice_id)
             if audio_stream:
                 filename = f"audio_{len(audio_files) + 1}.mp3"
                 save_audio(audio_stream, filename)
                 audio_files.append(filename)
                 st.audio(audio_stream, format="audio/mpeg")
+                st.download_button(label="Download Audio", data=audio_stream.getvalue(), file_name=filename, key=filename)
                 st.success(f"Audio generated and saved as {filename}!")
 
     st.write("## Upload an Audio Clip")
@@ -87,21 +92,23 @@ def main():
     if uploaded_file is not None:
         if st.button("Generate Voice from Clip"):
             with st.spinner("Generating audio from clip..."):
-                audio_stream = speech_to_speech(uploaded_file)
+                audio_stream = speech_to_speech(uploaded_file, voice_id=selected_voice_id)
                 if audio_stream:
                     filename = f"audio_{len(audio_files) + 1}.mp3"
                     save_audio(audio_stream, filename)
                     audio_files.append(filename)
                     st.audio(audio_stream, format="audio/mpeg")
+                    st.download_button(label="Download Audio", data=audio_stream.getvalue(), file_name=filename, key=filename)
                     st.success(f"Audio generated and saved as {filename}!")
 
     st.write("## Previously Generated Audios")
-    for audio_file in audio_files:
-        st.audio(audio_file, format="audio/mpeg")
-        st.download_button(label="Download", data=open(audio_file, 'rb').read(), file_name=audio_file)
+    for i, audio_file in enumerate(audio_files):
+        with open(audio_file, 'rb') as f:
+            audio_data = f.read()
+            st.audio(audio_file, format="audio/mpeg")
+            st.download_button(label="Download Audio", data=audio_data, file_name=audio_file, key=f"download_{i}")
 
     st.write("## Available Voices and Descriptions")
-    voices = get_voices()
     if voices:
         for voice in voices:
             st.write(f"**Name**: {voice['name']}")
