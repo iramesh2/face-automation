@@ -3,13 +3,16 @@ import requests
 from io import BytesIO
 from dotenv import load_dotenv
 import os
+from voice_descriptions import get_voices
 
 # Load environment variables
 load_dotenv()
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 
-# ElevenLabs API endpoint base URL
-base_url = "https://api.elevenlabs.io/v1/text-to-speech"
+# ElevenLabs API endpoint base URLs
+base_url = "https://api.elevenlabs.io/v1"
+tts_url = f"{base_url}/text-to-speech"
+sts_url = f"{base_url}/speech-to-speech"  # Add the speech-to-speech endpoint
 
 # Default voice ID (Adam pre-made voice)
 default_voice_id = "pNInz6obpgDQGcFmaJgB"
@@ -18,11 +21,13 @@ default_voice_id = "pNInz6obpgDQGcFmaJgB"
 headers = {
     "Accept": "audio/mpeg",
     "xi-api-key": ELEVENLABS_API_KEY,
-    "Content-Type": "application/json"
 }
 
+# In-memory storage for audio files
+audio_files = []
+
 def text_to_speech(text: str, voice_id: str = default_voice_id) -> BytesIO:
-    url = f"{base_url}/{voice_id}"
+    url = f"{tts_url}/{voice_id}"
     payload = {
         "text": text,
         "model_id": "eleven_monolingual_v1",
@@ -41,8 +46,27 @@ def text_to_speech(text: str, voice_id: str = default_voice_id) -> BytesIO:
         st.error(f"Failed to generate speech: {response.status_code} - {response.text}")
         return None
 
+def speech_to_speech(audio_file, voice_id: str = default_voice_id) -> BytesIO:
+    url = f"{sts_url}/{voice_id}"
+    files = {
+        'audio': audio_file
+    }
+    response = requests.post(url, headers=headers, files=files)
+
+    if response.ok:
+        audio_stream = BytesIO(response.content)
+        return audio_stream
+    else:
+        st.error(f"Failed to generate speech: {response.status_code} - {response.text}")
+        return None
+
+def save_audio(audio_stream, filename):
+    with open(filename, 'wb') as f:
+        f.write(audio_stream.getbuffer())
+    return filename
+
 def main():
-    st.title("Text to Speech with ElevenLabs")
+    st.title("Text to Speech and Speech to Speech with ElevenLabs")
 
     st.write("## Enter Voice Description and Text")
     voice_description = st.text_input("Voice Description", "Default Voice (Adam)")
@@ -52,8 +76,43 @@ def main():
         with st.spinner("Generating audio..."):
             audio_stream = text_to_speech(text_input)
             if audio_stream:
+                filename = f"audio_{len(audio_files) + 1}.mp3"
+                save_audio(audio_stream, filename)
+                audio_files.append(filename)
                 st.audio(audio_stream, format="audio/mpeg")
-                st.success("Audio generated successfully!")
+                st.success(f"Audio generated and saved as {filename}!")
+
+    st.write("## Upload an Audio Clip")
+    uploaded_file = st.file_uploader("Choose an audio file...", type=["wav", "mp3", "m4a"])
+    if uploaded_file is not None:
+        if st.button("Generate Voice from Clip"):
+            with st.spinner("Generating audio from clip..."):
+                audio_stream = speech_to_speech(uploaded_file)
+                if audio_stream:
+                    filename = f"audio_{len(audio_files) + 1}.mp3"
+                    save_audio(audio_stream, filename)
+                    audio_files.append(filename)
+                    st.audio(audio_stream, format="audio/mpeg")
+                    st.success(f"Audio generated and saved as {filename}!")
+
+    st.write("## Previously Generated Audios")
+    for audio_file in audio_files:
+        st.audio(audio_file, format="audio/mpeg")
+        st.download_button(label="Download", data=open(audio_file, 'rb').read(), file_name=audio_file)
+
+    st.write("## Available Voices and Descriptions")
+    voices = get_voices()
+    if voices:
+        for voice in voices:
+            st.write(f"**Name**: {voice['name']}")
+            st.write(f"**Voice ID**: {voice['voice_id']}")
+            # Display additional details if available
+            st.write(f"**Description**: {voice.get('description', 'No description available')}")
+            if 'gender' in voice:
+                st.write(f"**Gender**: {voice['gender']}")
+            if 'language' in voice:
+                st.write(f"**Language**: {voice['language']}")
+            st.write("---")
 
 if __name__ == "__main__":
     main()
